@@ -1,5 +1,5 @@
-#ifndef _SHELL_H_
-#define _SHELL_H_
+#ifndef TINY_SHELL_H
+#define TINY_SHELL_H
 
 
 #include <inttypes.h>
@@ -15,7 +15,7 @@
 #define SHELL_QUOTE_CHARACTER     '"'
 
 
-class Shell 
+class TinyShell 
 {
 public: 
   typedef void (TPromptCallback)(void);  
@@ -32,7 +32,7 @@ private:
   struct 
   {
     const char *pc_Cmd;
-    const TCmdCallback *p_Callback;
+    TCmdCallback *p_Callback;
   } ma_Commands[SHELL_MAX_COMMANDS];
 
   uint16_t mu16_NumberOfCommands;
@@ -41,22 +41,23 @@ private:
   uint16_t mu16_BufferPos;
 
 public:
-  Shell(void);
+  TinyShell(void);
 
   // for configuration
-  void setPromptCallback(const TPromptCallback *p_PromptCallback);
-  void setCommandNotFoundCallback(const TDefaultCmdCallback *p_DefaultCmdCallback);
-  void setCommandErrorCallback(const TCmdErrorCallback *p_CmdErrorCallback);
-  ERc addCommandCallback(const char *pc_Cmd, const TCmdCallback *p_CmdCallback);
+  void setPromptCallback(TPromptCallback *p_PromptCallback);
+  void setCommandNotFoundCallback(TDefaultCmdCallback *p_DefaultCmdCallback);
+  void setCommandErrorCallback(TCmdErrorCallback *p_CmdErrorCallback);
+  ERc addCommandCallback(const char *pc_Cmd, TCmdCallback *p_CmdCallback);
 
   // for operation
   void begin(void);
+  void end(void);
   void putChar(const char c_Char);
   void reset(const bool b_DisplayPrompt = false);
 
 private:
   void _execCmd(void);
-  void _defaultCmdCallback(char *pc_Cmd);
+//  void _defaultCmdCallback(char *pc_Cmd);
 };
 
 #endif

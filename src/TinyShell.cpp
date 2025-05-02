@@ -1,11 +1,11 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "shell.h"
+#include "TinyShell.h"
 
 
 
-Shell::Shell(void)
+TinyShell::TinyShell(void)
   : mp_PromptCallback{nullptr}
   , mp_DefaultCmdCallback{nullptr}
   , mp_CmdErrorCallback{nullptr}
@@ -16,25 +16,25 @@ Shell::Shell(void)
 
 
 
-void Shell::setPromptCallback(const TPromptCallback *p_PromptCallback)
+void TinyShell::setPromptCallback(TPromptCallback *p_PromptCallback)
 {
   mp_PromptCallback = p_PromptCallback;
 }
 
 
-void Shell::setCommandNotFoundCallback(const TDefaultCmdCallback *p_DefaultCmdCallback)
+void TinyShell::setCommandNotFoundCallback(TDefaultCmdCallback *p_DefaultCmdCallback)
 {
   mp_DefaultCmdCallback = p_DefaultCmdCallback;
 }
 
 
-void Shell::setCommandErrorCallback(const TCmdErrorCallback *p_CmdErrorCallback)
+void TinyShell::setCommandErrorCallback(TCmdErrorCallback *p_CmdErrorCallback)
 {
   mp_CmdErrorCallback = p_CmdErrorCallback;
 }
 
 
-Shell::ERc Shell::addCommandCallback(const char *pc_Cmd, const TCmdCallback *p_CmdCallback)
+TinyShell::ERc TinyShell::addCommandCallback(const char *pc_Cmd, TCmdCallback *p_CmdCallback)
 {
   if(mu16_NumberOfCommands>=SHELL_MAX_COMMANDS)
     return RcError;
@@ -47,14 +47,20 @@ Shell::ERc Shell::addCommandCallback(const char *pc_Cmd, const TCmdCallback *p_C
 }
 
 
-void Shell::begin(void)
+void TinyShell::begin(void)
 {
   reset(true);
 }
 
 
 
-void Shell::reset(const bool b_DisplayPrompt)
+void TinyShell::end(void)
+{
+}
+
+
+
+void TinyShell::reset(const bool b_DisplayPrompt)
 {
   mu16_BufferPos = 0;
   if(b_DisplayPrompt && mp_PromptCallback)
@@ -63,7 +69,7 @@ void Shell::reset(const bool b_DisplayPrompt)
 
 
 
-void Shell::putChar(const char c_Char)
+void TinyShell::putChar(const char c_Char)
 {
   if(c_Char==SHELL_EOL_CHARACTER)
   {
@@ -83,7 +89,7 @@ void Shell::putChar(const char c_Char)
 
 
 
-void Shell::_execCmd(void)
+void TinyShell::_execCmd(void)
 {
   char ac_Buffer[SHELL_MAX_BUFFER_LENGTH+1];   // +1 because of trailing \0
   uint16_t u16_BufferPos = 0;
