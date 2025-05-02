@@ -1,3 +1,10 @@
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
+#include <stdio.h>
+#endif
+
+
 #include <ctype.h>
 #include <string.h>
 
@@ -5,48 +12,127 @@
 
 
 
+static const uint8_t SHELL_MAX_ARGS = 8;
+static const char    SHELL_EOL_CHARACTER = '\r';
+static const char    SHELL_BACKSPACE_CHARACTER = '\x08';
+static const char    SHELL_ESCAPE_CHARACTER = '\\';
+static const char    SHELL_QUOTE_CHARACTER = '"';
+
+
+/**
+ * @brief Constructor for the TinyShell class.
+ * 
+ * Initializes the TinyShell object with default values for the number of commands
+ * and the buffer position.
+ */
 TinyShell::TinyShell(void)
-  : mp_PromptCallback{nullptr}
-  , mp_DefaultCmdCallback{nullptr}
-  , mp_CmdErrorCallback{nullptr}
-  , mu16_NumberOfCommands{0}
+  : mu16_NumberOfCommands{0}
   , mu16_BufferPos{0}
 {
 }
 
 
 
-void TinyShell::setPromptCallback(TPromptCallback *p_PromptCallback)
+/**
+ * @brief Prints the command prompt to the appropriate output stream.
+ * 
+ * This function outputs a command prompt symbol ("> ") to indicate that the
+ * shell is ready to accept user input. The output stream depends on the
+ * platform:
+ * - On Arduino, the prompt is printed to the Serial interface.
+ * - On other platforms, the prompt is printed to the standard output (stdout) using printf.
+ * 
+ * This method is intended to be overridden by derived classes to customize
+ * the shell prompt display.
+ */
+void TinyShell::printPrompt()
 {
-  mp_PromptCallback = p_PromptCallback;
+#ifdef ARDUINO
+  Serial.print("> ");
+#else
+  printf("> ");
+#endif
 }
 
 
-void TinyShell::setCommandNotFoundCallback(TDefaultCmdCallback *p_DefaultCmdCallback)
+/**
+ * @brief Prints a message indicating that a command was not found.
+ * 
+ * This function outputs an error message when an unrecognized command is entered.
+ * The output format depends on whether the code is running on an Arduino platform
+ * or a standard system. On Arduino, the message is sent to the Serial interface.
+ * On other platforms, it is printed to the standard output using printf.
+ * 
+ * @param pc_Cmd A pointer to a null-terminated string representing the command
+ *               that was not recognized.
+ * 
+ * This method is intended to be overridden by derived classes to customize
+ * the error message for unknown commands.
+ */
+void TinyShell::printCommandNotFound(const char *pc_Cmd)
 {
-  mp_DefaultCmdCallback = p_DefaultCmdCallback;
+#ifdef ARDUINO
+  Serial.print("Command '");
+  Serial.print(pc_Cmd);
+  Serial.println("' not found (try command 'echo')");
+#else
+  printf("Command '%s' not found (try command 'echo')\n", pc_Cmd);
+#endif  
 }
 
 
-void TinyShell::setCommandErrorCallback(TCmdErrorCallback *p_CmdErrorCallback)
+/**
+ * @brief Prints an error message indicating that a command has failed, along with its return code.
+ * 
+ * This function outputs an error message to the appropriate output stream depending on the platform.
+ * On Arduino, it uses the `Serial` interface, while on other platforms, it uses `printf`.
+ * 
+ * @param pc_Cmd The name of the command that failed.
+ * @param rc The return code associated with the failure.
+ *
+ * This method is intended to be overridden by derived classes to customize
+ * the error message for command failures.
+ */
+void TinyShell::printCommandError(const char *pc_Cmd, const int rc)
 {
-  mp_CmdErrorCallback = p_CmdErrorCallback;
+#ifdef ARDUINO
+  Serial.print(pc_Cmd);
+  Serial.print(" failed returncode ");
+  Serial.println(rc);
+#else
+  printf("%s failed returncode %i\n", pc_Cmd, rc);
+#endif
 }
 
 
-TinyShell::ERc TinyShell::addCommandCallback(const char *pc_Cmd, TCmdCallback *p_CmdCallback)
+/**
+ * @brief Adds a new command to the TinyShell command list.
+ * 
+ * @param pc_CmdName A pointer to a null-terminated string representing the name of the command.
+ * @param p_Command A pointer to a TinyShellCommand object representing the command implementation.
+ * @return TinyShell::ERc Returns ERc::OK if the command was successfully added, or ERc::Error if the maximum number of commands (SHELL_MAX_COMMANDS) has been reached.
+ * 
+ * @note The function does not check for duplicate command names. It is the caller's responsibility to ensure unique command names.
+ */
+TinyShell::ERc TinyShell::addCommand(const char *pc_CmdName, TinyShellCommand *p_Command)
 {
   if(mu16_NumberOfCommands>=SHELL_MAX_COMMANDS)
-    return RcError;
+    return ERc::Error;
 
-  ma_Commands[mu16_NumberOfCommands].pc_Cmd = pc_Cmd;
-  ma_Commands[mu16_NumberOfCommands].p_Callback = p_CmdCallback;
+  ma_Commands[mu16_NumberOfCommands].pc_CmdName = pc_CmdName;
+  ma_Commands[mu16_NumberOfCommands].p_Command = p_Command;
   mu16_NumberOfCommands++;
 
-  return RcOK;
+  return ERc::OK;
 }
 
 
+/**
+ * @brief Initializes the TinyShell instance and performs a reset.
+ * 
+ * This function is used to start the TinyShell instance. It calls the
+ * reset function to perform an initial reset of the shell.
+ */
 void TinyShell::begin(void)
 {
   reset(true);
@@ -54,21 +140,51 @@ void TinyShell::begin(void)
 
 
 
+/**
+ * @brief Terminates the TinyShell instance and performs any necessary cleanup.
+ * 
+ * This function is intended to be called when the TinyShell instance is no longer
+ * needed. Override this function to implement specific cleanup logic if required.
+ */
 void TinyShell::end(void)
 {
 }
 
 
 
+/**
+ * @brief Resets the TinyShell state, clearing the input buffer and optionally displaying the prompt.
+ * 
+ * @param b_DisplayPrompt If true, the shell prompt will be displayed after resetting.
+ */
 void TinyShell::reset(const bool b_DisplayPrompt)
 {
   mu16_BufferPos = 0;
-  if(b_DisplayPrompt && mp_PromptCallback)
-    mp_PromptCallback();
+  if(b_DisplayPrompt)
+    printPrompt();
 }
 
 
 
+/**
+ * @brief Processes a character input for the TinyShell.
+ *
+ * This function handles character input by performing actions such as executing
+ * a command when the end-of-line character is received, handling backspace to
+ * remove the last character in the buffer, or appending characters to the buffer
+ * if it has not reached its maximum length.
+ *
+ * @param c_Char The character to be processed.
+ *
+ * Behavior:
+ * - If `c_Char` is the end-of-line character (`SHELL_EOL_CHARACTER`), the command
+ *   in the buffer is executed, and the buffer position is reset.
+ * - If `c_Char` is the backspace character (`SHELL_BACKSPACE_CHARACTER`), the buffer
+ *   position is decremented if it is greater than 0, effectively removing the last
+ *   character.
+ * - If the buffer has not reached its maximum length (`SHELL_MAX_BUFFER_LENGTH`),
+ *   the character is appended to the buffer, and the buffer position is incremented.
+ */
 void TinyShell::putChar(const char c_Char)
 {
   if(c_Char==SHELL_EOL_CHARACTER)
@@ -89,6 +205,40 @@ void TinyShell::putChar(const char c_Char)
 
 
 
+/**
+ * @brief Executes a command entered into the shell by parsing the input buffer,
+ *        matching it against available commands, and invoking the corresponding
+ *        command handler.
+ * 
+ * This function processes the input buffer `mac_Buffer` to extract arguments,
+ * handles escape characters and quoted strings, and matches the parsed command
+ * with registered commands. If a match is found, the corresponding command
+ * handler is executed. If no match is found, a "command not found" message is
+ * displayed. The function also handles edge cases such as empty input or
+ * exceeding the maximum number of arguments.
+ * 
+ * @details
+ * - The input buffer is parsed into words (arguments) while respecting escape
+ *   characters (`\`) and quoted strings (`"`).
+ * - Arguments are stored in the `argv` array, and the number of arguments is
+ *   tracked by `u16_Args`.
+ * - If no command is found in the input, the function simply returns after
+ *   displaying the shell prompt.
+ * - If a matching command is found, its handler is executed, and any error
+ *   returned by the handler is displayed.
+ * - If no matching command is found, a default "command not found" message is
+ *   displayed.
+ * 
+ * @note
+ * - The function ensures safety by initializing unused `argv` entries to point
+ *   to a predefined error string (`<err>`).
+ * - The maximum number of arguments is defined by `SHELL_MAX_ARGS`.
+ * - The maximum buffer length is defined by `SHELL_MAX_BUFFER_LENGTH`.
+ * 
+ * @param None
+ * 
+ * @return void
+ */
 void TinyShell::_execCmd(void)
 {
   char ac_Buffer[SHELL_MAX_BUFFER_LENGTH+1];   // +1 because of trailing \0
@@ -144,37 +294,32 @@ void TinyShell::_execCmd(void)
   for(auto i=u16_Args; i<SHELL_MAX_ARGS; i++)
     argv[i]=ac_Err;  // for safety, set pointer to defined string instead of pointing anywhere 
 
-
   // if no command found, quit
   if(u16_Args == 0)
   {
-    if(mp_PromptCallback)
-      mp_PromptCallback();
+    printPrompt();
     return;
   }
 
   // second, match the command with available ones
   for(auto i=0U; i<mu16_NumberOfCommands; i++)
   {
-    if(!strcmp(ma_Commands[i].pc_Cmd, argv[0]))
+    if(!strcmp(ma_Commands[i].pc_CmdName, argv[0]))
     {
-      if(ma_Commands[i].p_Callback)
+      if(ma_Commands[i].p_Command)
       {
-        rc=ma_Commands[i].p_Callback(u16_Args, argv);
-        if(rc && mp_CmdErrorCallback)
-          mp_CmdErrorCallback(argv[0], rc);
+        rc=ma_Commands[i].p_Command->exec(u16_Args, argv);
+        if(rc)
+          printCommandError(argv[0], rc);
       }  
-      if(mp_PromptCallback)
-        mp_PromptCallback();
+      printPrompt();
       return;
     }
   }
 
   // if no matching command found, call default command callback
-  if(mp_DefaultCmdCallback) 
-    mp_DefaultCmdCallback(argv[0]);
-  if(mp_PromptCallback)
-    mp_PromptCallback();
+  printCommandNotFound(argv[0]);
+  printPrompt();
 
   return;
 }
