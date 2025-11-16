@@ -19,6 +19,7 @@ static const char    SHELL_ESCAPE_CHARACTER = '\\';
 static const char    SHELL_QUOTE_CHARACTER = '"';
 
 
+
 /**
  * @brief Constructor for the TinyShell class.
  * 
@@ -28,103 +29,31 @@ static const char    SHELL_QUOTE_CHARACTER = '"';
 TinyShell::TinyShell(void)
   : mu16_NumberOfCommands{0}
   , mu16_BufferPos{0}
-{
-}
-
-
-
-/**
- * @brief Prints the command prompt to the appropriate output stream.
- * 
- * This function outputs a command prompt symbol ("> ") to indicate that the
- * shell is ready to accept user input. The output stream depends on the
- * platform:
- * - On Arduino, the prompt is printed to the Serial interface.
- * - On other platforms, the prompt is printed to the standard output (stdout) using printf.
- * 
- * This method is intended to be overridden by derived classes to customize
- * the shell prompt display.
- */
-void TinyShell::printPrompt()
-{
 #ifdef ARDUINO
-  Serial.print("> ");
-#else
-  printf("> ");
+  , mp_Stream{nullptr}
 #endif
+{
 }
 
 
-/**
- * @brief Prints a message indicating that a command was not found.
- * 
- * This function outputs an error message when an unrecognized command is entered.
- * The output format depends on whether the code is running on an Arduino platform
- * or a standard system. On Arduino, the message is sent to the Serial interface.
- * On other platforms, it is printed to the standard output using printf.
- * 
- * @param pc_Cmd A pointer to a null-terminated string representing the command
- *               that was not recognized.
- * 
- * This method is intended to be overridden by derived classes to customize
- * the error message for unknown commands.
- */
-void TinyShell::printCommandNotFound(const char *pc_Cmd)
-{
+
 #ifdef ARDUINO
-  Serial.print("Command '");
-  Serial.print(pc_Cmd);
-  Serial.println("' not found (try command 'echo')");
-#else
-  printf("Command '%s' not found (try command 'echo')\n", pc_Cmd);
-#endif  
+/**
+ * @brief Constructor for the TinyShell class with a specified output stream.
+ * 
+ * Initializes the TinyShell object with a given output stream for command
+ * prompt display. This constructor is intended for use on Arduino platforms.
+ * 
+ * @param p_Stream A pointer to a Stream object (e.g., Serial) for output.
+ */
+TinyShell::TinyShell(Stream *p_Stream)
+  : mu16_NumberOfCommands{0}
+  , mu16_BufferPos{0}
+  , mp_Stream{p_Stream}
+{
 }
-
-
-/**
- * @brief Prints an error message indicating that a command has failed, along with its return code.
- * 
- * This function outputs an error message to the appropriate output stream depending on the platform.
- * On Arduino, it uses the `Serial` interface, while on other platforms, it uses `printf`.
- * 
- * @param pc_Cmd The name of the command that failed.
- * @param rc The return code associated with the failure.
- *
- * This method is intended to be overridden by derived classes to customize
- * the error message for command failures.
- */
-void TinyShell::printCommandError(const char *pc_Cmd, const int rc)
-{
-#ifdef ARDUINO
-  Serial.print(pc_Cmd);
-  Serial.print(" failed returncode ");
-  Serial.println(rc);
-#else
-  printf("%s failed returncode %i\n", pc_Cmd, rc);
 #endif
-}
 
-
-/**
- * @brief Adds a new command to the TinyShell command list.
- * 
- * @param pc_CmdName A pointer to a null-terminated string representing the name of the command.
- * @param p_Command A pointer to a TinyShellCommand object representing the command implementation.
- * @return TinyShell::ERc Returns ERc::OK if the command was successfully added, or ERc::Error if the maximum number of commands (SHELL_MAX_COMMANDS) has been reached.
- * 
- * @note The function does not check for duplicate command names. It is the caller's responsibility to ensure unique command names.
- */
-TinyShell::ERc TinyShell::addCommand(const char *pc_CmdName, TinyShellCommand *p_Command)
-{
-  if(mu16_NumberOfCommands>=SHELL_MAX_COMMANDS)
-    return ERc::Error;
-
-  ma_Commands[mu16_NumberOfCommands].pc_CmdName = pc_CmdName;
-  ma_Commands[mu16_NumberOfCommands].p_Command = p_Command;
-  mu16_NumberOfCommands++;
-
-  return ERc::OK;
-}
 
 
 /**
@@ -149,6 +78,169 @@ void TinyShell::begin(void)
 void TinyShell::end(void)
 {
 }
+
+
+#ifdef ARDUINO
+/**
+ * @brief Sets the output stream for the TinyShell instance.
+ * 
+ * This function allows the user to specify a different output stream for the
+ * TinyShell instance. It is intended for use on Arduino platforms.
+ * 
+ * @param p_Stream A pointer to a Stream object (e.g., Serial) for output.
+ */
+void TinyShell::setStream(Stream *p_Stream)
+{
+  mp_Stream = p_Stream;
+}
+#endif
+
+
+
+/**
+ * @brief Main loop function for the TinyShell class.
+ * 
+ * This function continuously reads characters from the associated stream
+ * (if available) and processes them. It mirrors back the entered characters
+ * to the stream, ensuring that a newline sequence is sent when a carriage
+ * return ('\r') is encountered. Additionally, it passes the received character
+ * to the `putChar` method for further handling.
+ * 
+ * @note This function assumes that `mp_Stream` is a valid pointer to a stream
+ *       object that supports `available()`, `read()`, `write()`, and `println()` methods.
+ */
+void TinyShell::loop(void)
+{
+#ifdef ARDUINO
+  if(mp_Stream)
+  {
+    while(mp_Stream->available())
+    {
+      char c = mp_Stream->read();
+
+      // mirror back entered characters
+      if(c == SHELL_EOL_CHARACTER)
+      {
+        // if return, also send a complete newline sequence  
+        mp_Stream->println(); 
+      } 
+      else
+      {
+        mp_Stream->write(c);
+      }
+
+      // handover the received character from the serial device
+      putChar(c);
+    }
+  }
+  #endif
+}
+
+
+
+/**
+ * @brief Prints the command prompt to the appropriate output stream.
+ * 
+ * This function outputs a command prompt symbol ("> ") to indicate that the
+ * shell is ready to accept user input. The output stream depends on the
+ * platform:
+ * - On Arduino, the prompt is printed to the Serial interface.
+ * - On other platforms, the prompt is printed to the standard output (stdout) using printf.
+ * 
+ * This method is intended to be overridden by derived classes to customize
+ * the shell prompt display.
+ */
+void TinyShell::printPrompt()
+{
+#ifdef ARDUINO
+  if(mp_Stream != nullptr)
+  {
+    mp_Stream->print(F("> "));
+  }
+#else
+  printf("> ");
+#endif
+}
+
+
+/**
+ * @brief Prints a message indicating that a command was not found.
+ * 
+ * This function outputs an error message when an unrecognized command is entered.
+ * The output format depends on whether the code is running on an Arduino platform
+ * or a standard system. On Arduino, the message is sent to the Serial interface.
+ * On other platforms, it is printed to the standard output using printf.
+ * 
+ * @param pc_Cmd A pointer to a null-terminated string representing the command
+ *               that was not recognized.
+ * 
+ * This method is intended to be overridden by derived classes to customize
+ * the error message for unknown commands.
+ */
+void TinyShell::printCommandNotFound(const char *pc_Cmd)
+{
+#ifdef ARDUINO
+  if(mp_Stream != nullptr)
+  {
+    mp_Stream->print(F("Command '"));
+    mp_Stream->print(pc_Cmd);
+    mp_Stream->println(F("' not found"));
+  }
+#else
+  printf("Command '%s' not found\n", pc_Cmd);
+#endif  
+}
+
+
+/**
+ * @brief Prints an error message indicating that a command has failed, along with its return code.
+ * 
+ * This function outputs an error message to the appropriate output stream depending on the platform.
+ * On Arduino, it uses the `Serial` interface, while on other platforms, it uses `printf`.
+ * 
+ * @param pc_Cmd The name of the command that failed.
+ * @param rc The return code associated with the failure.
+ *
+ * This method is intended to be overridden by derived classes to customize
+ * the error message for command failures.
+ */
+void TinyShell::printCommandError(const char *pc_Cmd, const int rc)
+{
+#ifdef ARDUINO
+  if(mp_Stream != nullptr)
+  {
+    mp_Stream->print(pc_Cmd);
+    mp_Stream->print(F(" failed returncode "));
+    mp_Stream->println(rc);
+  }
+#else
+  printf("%s failed returncode %i\n", pc_Cmd, rc);
+#endif
+}
+
+
+/**
+ * @brief Adds a new command to the TinyShell command list.
+ * 
+ * @param pc_CmdName A pointer to a null-terminated string representing the name of the command.
+ * @param p_Command A pointer to a TinyShellCommand object representing the command implementation.
+ * @return TinyShell::ERc Returns ERc::OK if the command was successfully added, or ERc::Error if the maximum number of commands (SHELL_MAX_COMMANDS) has been reached.
+ * 
+ * @note The function does not check for duplicate command names. It is the caller's responsibility to ensure unique command names.
+ */
+TinyShell::ERc TinyShell::addCommand(const char *pc_CmdName, TinyShellCommand *p_Command)
+{
+  if(mu16_NumberOfCommands>=TINYSHELL_MAX_COMMANDS)
+    return ERc::Error;
+
+  ma_Commands[mu16_NumberOfCommands].pc_CmdName = pc_CmdName;
+  ma_Commands[mu16_NumberOfCommands].p_Command = p_Command;
+  mu16_NumberOfCommands++;
+
+  return ERc::OK;
+}
+
+
 
 
 
@@ -197,7 +289,7 @@ void TinyShell::putChar(const char c_Char)
     if(mu16_BufferPos>0)
       mu16_BufferPos--;
   }   
-  else if(mu16_BufferPos<SHELL_MAX_BUFFER_LENGTH)
+  else if(mu16_BufferPos<TINYSHELL_MAX_BUFFER_LENGTH)
   {
     mac_Buffer[mu16_BufferPos++] = c_Char;
   }
@@ -241,7 +333,7 @@ void TinyShell::putChar(const char c_Char)
  */
 void TinyShell::_execCmd(void)
 {
-  char ac_Buffer[SHELL_MAX_BUFFER_LENGTH+1];   // +1 because of trailing \0
+  char ac_Buffer[TINYSHELL_MAX_BUFFER_LENGTH+1];   // +1 because of trailing \0
   uint16_t u16_BufferPos = 0;
   bool b_ArgFound = false;
   char *argv[SHELL_MAX_ARGS];

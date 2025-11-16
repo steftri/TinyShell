@@ -5,9 +5,13 @@
 #include <inttypes.h>
 
 
+#ifndef TINYSHELL_MAX_BUFFER_LENGTH
+#define TINYSHELL_MAX_BUFFER_LENGTH   80
+#endif
 
-static const uint8_t SHELL_MAX_BUFFER_LENGTH = 80;
-static const uint8_t SHELL_MAX_COMMANDS = 32;
+#ifndef TINYSHELL_MAX_COMMANDS
+#define TINYSHELL_MAX_COMMANDS   32
+#endif
 
 
 /**
@@ -70,28 +74,41 @@ private:
   {
     const char *pc_CmdName;
     TinyShellCommand *p_Command;
-  } ma_Commands[SHELL_MAX_COMMANDS];
+  } ma_Commands[TINYSHELL_MAX_COMMANDS];
 
   uint16_t mu16_NumberOfCommands;
 
-  char mac_Buffer[SHELL_MAX_BUFFER_LENGTH];
+  char mac_Buffer[TINYSHELL_MAX_BUFFER_LENGTH];
   uint16_t mu16_BufferPos;
+
+#ifdef ARDUINO
+  Stream *mp_Stream;
+#endif
 
 public:
   TinyShell(void);
-
-  // for configuration
-  virtual void printPrompt(void);
-  virtual void printCommandNotFound(const char *pc_Cmd);
-  virtual void printCommandError(const char *pc_Cmd, const int rc);
-  ERc addCommand(const char *pc_CmdName, TinyShellCommand *p_Command);
+#ifdef ARDUINO
+  explicit TinyShell(Stream *p_Stream);
+#endif
 
   // for operation
   void begin(void);
   void end(void);
+  void loop(void);
+  
+#ifdef ARDUINO
+  void setStream(Stream *p_Stream);
+#endif
+
   void putChar(const char c_Char);
   void reset(const bool b_DisplayPrompt = false);
 
+  virtual void printPrompt(void);
+  virtual void printCommandNotFound(const char *pc_Cmd);
+  virtual void printCommandError(const char *pc_Cmd, const int rc);
+
+  ERc addCommand(const char *pc_CmdName, TinyShellCommand *p_Command);
+  
 private:
   void _execCmd(void);
 };
